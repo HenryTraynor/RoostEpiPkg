@@ -1,3 +1,7 @@
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/HenryTraynor/RoostEpiPkg/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/HenryTraynor/RoostEpiPkg/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
 # RoostEpiPkg
 
 ## Spatial movement and epidemic modeling in structured wildlife populations
