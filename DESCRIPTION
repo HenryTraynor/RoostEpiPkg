@@ -1,0 +1,22 @@
+Package: RoostEpiPkg
+Title: Spatial Movement and Epidemic Simulation
+Version: 0.1.0
+Authors@R:
+    person("Henry", "Traynor",
+           email = "henrytraynor@uga.edu",
+           role = c("aut", "cre"))
+Description:
+    Simulates spatial movement and epidemic dynamics in
+    structured wildlife populations using continuous
+    landscape movement and discrete population processes.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Imports:
+    deSolve,
+    ReacTran
+Suggests:
+    knitr,
+    rmarkdown
+Config/roxygen2/version: 8.1.0
+VignetteBuilder: knitr

@@ -1,0 +1,678 @@
+---
+title: "Continuous Spatial Movement and Epidemic Modeling"
+author: "Henry Traynor"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Continuous Spatial Movement and Epidemic Modeling}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+# Overview
+
+This document describes the continuous spatial bat movement and epidemic model implemented in `continuous_model.R`.
+
+The purpose of the model is to represent a population of bats that occupies a set of discrete roosts but moves through a continuous landscape at night. During the day, bats are assumed to be associated with roosts and undergo epidemiological dynamics. During the night, bats leave the roosts and redistribute across a continuous two-dimensional landscape through diffusion. At dawn, bats return to roosts according to their spatial location and the attractiveness of available roosts.
+
+The model therefore links discrete roost-level epidemiology with continuous landscape movement.
+
+The daily sequence is:
+
+``` text
+Roost populations at dawn
+        |
+        v
+Daytime SIR/SIRS dynamics
+        |
+        v
+Nighttime continuous spatial movement
+        |
+        v
+Spatial density across landscape
+        |
+        v
+Dawn return and roost assignment
+        |
+        v
+New roost populations
+        |
+        v
+Next day
+```
+
+The model contains three epidemiological compartments:
+
+- `S`: susceptible bats
+- `I`: infected bats
+- `R`: recovered bats
+
+The movement process treats these compartments separately, allowing susceptible, infected, and recovered bats to move through the landscape while maintaining their epidemiological identity.
+
+# 1. Model structure
+
+## 1.1 Roosts
+
+The model begins with a set of `n_roosts` discrete roosts. Each roost has:
+
+- an `(x, y)` location,
+- a maximum capacity `N_max`,
+- a susceptible population `S`,
+- an infected population `I`,
+- a recovered population `R`,
+- a total population `N`.
+
+## 1.2 Continuous landscape
+
+The landscape is a unit square:
+
+$$
+0 \leq x \leq 1,\qquad 0 \leq y \leq 1.
+$$
+
+The landscape is divided into a `100 x 100` grid, giving 10,000 spatial cells.
+
+The grid is used to represent continuous spatial density numerically. A bat population is therefore represented as a density over the landscape during the nighttime movement phase rather than as a list of individual coordinates.
+
+# 2. Spatial relationship between bats and roosts
+
+## 2.1 Cell-to-roost distance
+
+For every landscape cell and every roost, the model calculates Euclidean distance:
+
+$$
+d_{ij} =
+\sqrt{(x_i-x_j)^2 + (y_i-y_j)^2}.
+$$
+
+Here:
+
+- $i$ indexes a landscape cell
+- $j$ indexes a roost.
+
+This produces the `cell_roost_dist` matrix.
+
+## 2.2 Distance decay
+
+The influence of a roost decreases with distance according to:
+
+$$
+K(d) = e^{-\lambda d}.
+$$
+
+# 3. Roost connectivity and diffusion
+
+The model also calculates connectivity among roosts using the same exponential distance-decay function:
+
+$$
+C_{jk} = e^{-\lambda d_{jk}},
+$$
+
+where $d_{jk}$ is the distance between roosts $j$ and $k$.
+
+Self-connectivity is removed:
+
+$$
+C_{jj}=0.
+$$
+
+For each roost, total connectivity is:
+
+$$
+C_j = \sum_{k\ne j} C_{jk}.
+$$
+
+The model then defines isolation as:
+
+$$
+I_j^{\mathrm{iso}} = \frac{1}{C_j}.
+$$
+
+A highly connected roost therefore has relatively low isolation, whereas an isolated roost has relatively high isolation.
+
+## 3.1 Roost-specific diffusion
+
+Each roost is assigned a diffusion coefficient:
+
+$$
+D_j =
+D_{\mathrm{base}}
+e^{-\gamma_D I_j^{\mathrm{iso}}}.
+$$
+
+Therefore:
+
+- highly isolated roosts receive lower effective diffusion,
+- highly connected roosts receive higher effective diffusion.
+
+The model then creates a continuous diffusion field by weighting each roost's diffusion coefficient according to its distance from each cell.
+
+Conceptually:
+
+$$
+D(x,y) =
+\frac{
+\sum_j K(d_j)D_j
+}{
+\sum_j K(d_j)
+}.
+$$
+
+This produces `D_field`, a spatially varying diffusion coefficient across the landscape.
+
+# 4. Initial nighttime spatial density
+
+At the beginning of each night, bats are converted from roost-level populations into continuous spatial densities.
+
+For each roost, the model creates a Gaussian distribution centered on the roost:
+
+$$
+G_j(d) =
+e^{-d^2/(2\sigma^2)}.
+$$
+
+Each Gaussian is normalized so that its integral over the model domain is one:
+
+$$
+\sum_i G_{ij}\Delta x\Delta y = 1.
+$$
+
+The density contributed by roost $j$ is therefore proportional to its population.
+
+For a compartment such as susceptible bats:
+
+$$
+u_S(x,y,0)
+=
+\sum_j S_jG_j(x,y).
+$$
+
+The same procedure is used independently for infected and recovered bats.
+
+At night, the model no longer represents bats as being located inside discrete roosts. Instead, each roost population becomes a continuous spatial density centered around its roost.
+
+# 5. Nighttime movement
+
+## 5.1 Diffusion equation
+
+For each epidemiological compartment:
+
+$$
+\frac{\partial u}{\partial t}
+=
+\nabla\cdot(D(x,y)\nabla u).
+$$
+
+There is no epidemiological transmission during this phase.
+
+Susceptible, infected, and recovered bats each experience the same spatial diffusion field.
+
+The model uses `ReacTran::tran.2D()` and `deSolve::ode.2D()` to solve the spatial differential equations numerically.
+
+## 5.2 Boundary conditions
+
+The landscape has closed boundaries. The density does not leave the modeled landscape.
+
+In practice, the boundary values are supplied to `tran.2D()` so that movement is retained within the model domain.
+
+## 5.3 Why S, I, and R are moved separately
+
+The model solves three independent diffusion equations:
+
+$$
+u_S,\quad u_I,\quad u_R.
+$$
+
+There is no conversion between compartments during nighttime movement.
+
+Therefore, nighttime movement changes where bats are located, but not their epidemiological status.
+
+For example, if there are 75 infected bats at the beginning of the night, there should still be 75 infected bats at the end of the night. Their spatial distribution has simply changed.
+
+# 6. Daytime epidemiological dynamics
+
+During the day, bats are assigned to roosts and undergo SIR or SIRS dynamics within each roost.
+
+SIR/SIRS models are run in discrete-time.
+
+## 6.1 Infection
+
+For a roost with $S$ susceptible bats, $I$ infected bats, and total population $N$, the probability that a susceptible bat becomes infected during one daytime step is:
+
+$$
+p_{\mathrm{infection}}
+=
+1-e^{-\beta SI/N}.
+$$
+
+The number of new infections is sampled as:
+
+$$
+\mathrm{new\ infections}
+\sim
+\mathrm{Binomial}(S,p_{\mathrm{infection}}).
+$$
+
+The use of $SI/N$ makes this a **frequency-dependent transmission formulation**.
+
+## 6.2 Recovery
+
+The probability that an infected bat recovers during the daytime step is:
+
+$$
+p_{\mathrm{recovery}}
+=
+1-e^{-\gamma}.
+$$
+
+The number of recoveries is:
+
+$$
+\mathrm{recoveries}
+\sim
+\mathrm{Binomial}(I,p_{\mathrm{recovery}}).
+$$
+
+The compartment updates are:
+
+$$
+S' = S-\mathrm{new\ infections}
+$$
+
+$$
+I' = I+\mathrm{new\ infections}-\mathrm{recoveries}
+$$
+
+$$
+R' = R+\mathrm{recoveries}.
+$$
+
+The total population does not change during this process:
+
+$$
+N'=N.
+$$
+
+## 6.3 SIRS option
+
+The model also contains an SIRS version.
+
+In addition to infection and recovery, recovered bats can lose immunity:
+
+$$
+p_{\mathrm{loss}}
+=
+1-e^{-\omega}.
+$$
+
+The number losing immunity is:
+
+$$
+\mathrm{loss\ of\ immunity}
+\sim
+\mathrm{Binomial}(R,p_{\mathrm{loss}}).
+$$
+
+The SIRS model is selected by:
+
+``` r
+model <- "SIRS"
+```
+
+and requires:
+
+``` r
+inf_parms <- c(
+  beta = ...,
+  gamma = ...,
+  omega = ...
+)
+```
+
+# 7. Dawn return to roosts
+
+After nighttime diffusion, each compartment exists as a continuous spatial density.
+
+The model converts each density into a probability distribution over landscape cells.
+
+For a cell with density $u_i$:
+
+$$
+P_i =
+\frac{u_i}{\sum_k u_k}.
+$$
+
+This gives the probability that a randomly selected bat from that compartment is associated with each cell at dawn.
+
+Susceptible, infected, and recovered bats are sampled separately.
+
+# 8. Roost attraction
+
+Once a bat's spatial cell is selected, the model determines which roost it returns to.
+
+Roost attraction is based on current population size and remaining capacity.
+
+For roost $j$:
+
+$$
+A_j =
+\left(
+\frac{N_j+\epsilon}
+{\sum_k N_k+\epsilon n_{\mathrm{roosts}}}
+\right)^\alpha
+\left(
+1-\frac{N_j}{N_{\max,j}}
+\right).
+$$
+
+This formulation has two components.
+
+### Population component
+
+$$
+\left(
+\frac{N_j+\epsilon}
+{\sum_kN_k+\epsilon n}
+\right)^\alpha
+$$
+
+means that larger roost populations have greater attraction.
+
+The parameter `alpha` controls how strongly attraction responds to population size.
+
+### Capacity component
+
+$$
+1-\frac{N_j}{N_{\max,j}}
+$$
+
+reduces attraction as a roost fills.
+
+Therefore, attraction balances two processes:
+
+> larger roosts are more attractive, but attraction decreases as roost capacity is approached.
+
+# 9. Combining spatial distance and roost attraction
+
+For each landscape cell and roost, the model calculates:
+
+$$
+W_{ij}
+=
+K(d_{ij})A_j.
+$$
+
+Thus a roost is more likely to receive a bat when it is:
+
+1.  close to the bat's spatial location, and
+2.  attractive based on its current population and capacity.
+
+The weights are normalized across roosts:
+
+$$
+P_{ij}
+=
+\frac{W_{ij}}
+{\sum_k W_{ik}}.
+$$
+
+This produces the probability of a bat in cell $i$ settling in roost $j$.
+
+# 10. Capacity-constrained assignment
+
+A purely probabilistic assignment could occasionally place more bats into a roost than its capacity.
+
+The model therefore imposes a hard capacity constraint.
+
+Bats are assigned one at a time.
+
+For each bat:
+
+1.  Identify roosts that still have available capacity.
+2.  Set the probability of full roosts to zero.
+3.  Renormalize the remaining probabilities.
+4.  Select a roost.
+5.  Reduce the remaining capacity of that roost by one.
+
+The process is repeated until every bat has been assigned.
+
+Susceptible bats are assigned first, followed by infected bats and then recovered bats. The capacity remaining after each compartment is therefore respected by the next compartment.
+
+The result satisfies:
+
+$$
+N_j\leq N_{\max,j}
+$$
+
+for every roost.
+
+# 11. One complete day
+
+The `run_day()` function combines the three major components.
+
+## Step 1: Daytime epidemiology
+
+``` r
+roosts_after_day <- daytime(
+  roosts = roost_info,
+  roost_parms = roost_parms,
+  inf_parms = inf_parms,
+  model = model
+)
+```
+
+This changes S, I, and R within roosts.
+
+## Step 2: Nighttime movement
+
+``` r
+night <- run_night(
+  roosts_after_day
+)
+```
+
+The roost populations are converted to continuous spatial densities and diffused across the landscape.
+
+## Step 3: Dawn return
+
+``` r
+dawn <- run_dawn_return(
+  night_output = night,
+  roost_info = roosts_after_day
+)
+```
+
+The continuous spatial distributions are sampled and bats are assigned back to roosts.
+
+The resulting roost populations become the starting point for the next day.
+
+# 12. Multi-day simulation
+
+The `run_simulation()` function repeats `run_day()` for the desired number of days.
+
+For example:
+
+``` r
+sim <- run_simulation(
+  roost_info = roost_info,
+  roost_parms = roost_parms,
+  inf_parms = inf_parms,
+  model = "SIR",
+  n_days = 30
+)
+```
+
+The returned object is a list.
+
+``` text
+sim[[1]]  = day 0
+sim[[2]]  = day 1
+sim[[3]]  = day 2
+...
+sim[[31]] = day 30
+```
+
+Each element contains the roost-level state at the beginning/end of the daily cycle represented by that time point.
+
+# 13. Conservation and model checks
+
+Several quantities should be conserved by the model.
+
+## 13.1 Total population
+
+Movement does not create or remove bats, so:
+
+$$
+\sum_jN_j(t)
+=
+\sum_jN_j(0).
+$$
+
+The script checks this with:
+
+``` r
+total_N <- sapply(
+  sim,
+  function(x) sum(x$N)
+)
+
+stopifnot(
+  all(total_N == total_N[1])
+)
+```
+
+## 13.2 Roost capacity
+
+Every roost must satisfy:
+
+$$
+N_j\leq N_{\max,j}.
+$$
+
+The capacity-constrained assignment procedure enforces this explicitly.
+
+# 14. Current parameter values
+
+The script uses:
+
+| Parameter      | Meaning                                     |
+|----------------|---------------------------------------------|
+| `num_roosts`   | Number of roosts                            |
+| `num_clusters` | Roost clusters                              |
+| `sd`           | Roost spatial clustering parameter          |
+| `avg_N_max`    | Average roost capacity                      |
+| `min_N_max`    | Minimum roost capacity                      |
+| `lambda`       | Spatial distance-decay rate                 |
+| `D_base`       | Baseline diffusion coefficient              |
+| `gamma_D`      | Effect of isolation on diffusion            |
+| `sigma`        | Initial spatial density width               |
+| `alpha`        | Population-attraction exponent              |
+| `epsilon`      | Small value preventing zero population term |
+| `beta`         | Transmission parameter                      |
+| `gamma`        | Recovery parameter                          |
+| `n_days`       | Example simulation length                   |
+
+# 15. Interpretation of the model
+
+The model has two spatial representations:
+
+### Day
+
+Bats are represented by discrete roost populations:
+
+$$
+(S_j,I_j,R_j).
+$$
+
+Transmission, recovery, and possible loss of immunity occurs within the roosts.
+
+### Night
+
+Bats are represented by continuous spatial densities:
+
+$$
+u_S(x,y),\quad
+u_I(x,y),\quad
+u_R(x,y).
+$$
+
+Movement occurs through a continuous landscape.
+
+### Dawn
+
+The continuous densities are converted back into discrete roost populations.
+
+$$
+\boxed{
+\text{Roost structure}
+\rightarrow
+\text{landscape movement}
+\rightarrow
+\text{roost redistribution}
+\rightarrow
+\text{epidemiology}
+}
+$$
+
+# 16. What the model is currently assuming
+
+The current implementation makes several simplifying assumptions.
+
+1.  **Bats occupy roosts during the day.**
+2.  **Epidemiological transmission occurs during the daytime roost phase.**
+3.  **Nighttime movement does not change epidemiological status.**
+4.  **All S, I, and R bats experience the same diffusion field.**
+5.  **Nighttime movement is diffusion-only.**
+6.  **Bats cannot leave the modeled landscape.**
+7.  **Roost choice depends on spatial distance and population/capacity-based attraction.**
+8.  **Roost capacity is a hard upper bound.**
+9.  **Bats are redistributed stochastically at dawn.**
+10. **The SIR process is stochastic because transitions are drawn from binomial distributions.**
+11. **Transmission is frequency-dependent through the** $SI/N$ term.
+
+# 17. Example workflow
+
+``` r
+# Epidemiological parameters
+inf_parms <- c(
+  beta = 0.5,
+  gamma = 0.1
+)
+
+# Choose epidemiological model
+model <- "SIR"
+
+# Number of days
+n_days <- 30
+
+# Run model
+set.seed(1)
+
+sim <- run_simulation(
+  roost_info = roost_info,
+  roost_parms = roost_parms,
+  inf_parms = inf_parms,
+  model = model,
+  n_days = n_days
+)
+```
+
+Summarize:
+
+``` r
+total_S <- sapply(sim, function(x) sum(x$S))
+total_I <- sapply(sim, function(x) sum(x$I))
+total_R <- sapply(sim, function(x) sum(x$R))
+```
+
+# 19. Future extensions
+
+Potential explorations:
+
+- alternative movement kernels
+- different diffusion coefficients
+- alternative roost-attraction functions
+- SIR vs. SIRS dynamics
+- demographic processes
+- mortality
+- recruitment
+- spatially varying environmental effects
