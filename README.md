@@ -123,9 +123,8 @@ Roost capacity is explicitly enforced during assignment.
 The development version can be installed from GitHub using:
 
 ```r
-install.packages("remotes")
-
-remotes::install_github("YOUR-GITHUB-USERNAME/RoostEpiPkg")
+# Install the development version from GitHub
+remotes::install_github("HenryTraynor/RoostEpiPkg")
 ```
 
 Once the package is released, the installation instructions will be updated accordingly.
