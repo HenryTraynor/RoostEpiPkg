@@ -145,6 +145,11 @@ initialize_roost_populations <- function(
     N * initial_infected
   )
 
+  if(sum(I)==0 & initial_infected != 0) {
+    index <- sample(1:length(I),1)
+    I[index] <- 1
+  }
+
   S <- N - I
 
   roost_info$N <- N
