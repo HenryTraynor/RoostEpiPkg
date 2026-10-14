@@ -1,40 +1,58 @@
 #' @importFrom stats runif rnorm dist
 NULL
 
+
 #' Create a set of roosts
 #'
-#' Creates spatially clustered roosts with variable carrying capacities.
+#' Creates spatially clustered roosts with a prescribed proportion of
+#' modern and traditional roosts, each with different carrying capacities.
 #'
 #' @param num_roosts Number of roosts.
 #' @param num_clusters Number of spatial clusters.
 #' @param sd Standard deviation of roost locations around cluster centers.
-#' @param avg_N_max Mean roost carrying capacity.
+#' @param prop_modern Proportion of roosts that are modern, between 0 and 1.
 #' @param min_N_max Minimum roost carrying capacity.
 #'
-#' @return A data frame containing roost locations, carrying capacities,
-#'   and population compartments.
+#' @return A data frame containing roost locations, types, carrying
+#'   capacities, and population compartments.
 #'
 #' @export
 create_roosts <- function(
     num_roosts = 25,
     num_clusters = 5,
     sd = 0.05,
-    avg_N_max = 70,
+    prop_modern = 0.5,
     min_N_max = 10
 ) {
 
-  # Cluster centers
-  cluster_x <- runif(
-    num_clusters,
-    min = 0,
-    max = 1
+  # Validate inputs
+  stopifnot(
+    num_roosts > 0,
+    num_clusters > 0,
+    prop_modern >= 0,
+    prop_modern <= 1
   )
 
-  cluster_y <- runif(
-    num_clusters,
-    min = 0,
-    max = 1
+  # Assign roost types
+  n_modern <- round(num_roosts * prop_modern)
+
+  roost_type <- sample(
+    c(
+      rep("modern", n_modern),
+      rep("traditional", num_roosts - n_modern)
+    )
   )
+
+  # Set mean carrying capacity by roost type
+  mean_N_max <- ifelse(
+    roost_type == "modern",
+    100,
+    20
+  )
+
+  # Cluster centers
+  cluster_x <- runif(num_clusters, min = 0, max = 1)
+  cluster_y <- runif(num_clusters, min = 0, max = 1)
 
   # Assign roosts to clusters
   cluster_id <- sample(
@@ -54,20 +72,19 @@ create_roosts <- function(
   x <- pmin(pmax(x, 0), 1)
   y <- pmin(pmax(y, 0), 1)
 
-  # Generate maximum roost capacities
+  # Generate carrying capacities
   N_max <- pmax(
-    round(
-      rnorm(
-        num_roosts,
-        mean = avg_N_max,
-        sd = avg_N_max * 0.25
-      )
-    ),
+    round(rnorm(
+      num_roosts,
+      mean = mean_N_max,
+      sd = mean_N_max * 0.25
+    )),
     min_N_max
   )
 
   data.frame(
     roost_id = seq_len(num_roosts),
+    roost_type = roost_type,
     x = x,
     y = y,
     N_max = N_max,
@@ -77,6 +94,7 @@ create_roosts <- function(
     N = 0
   )
 }
+
 
 
 #' Calculate pairwise roost distances
