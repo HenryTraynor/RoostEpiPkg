@@ -8,7 +8,7 @@ create_roosts(
   num_roosts = 25,
   num_clusters = 5,
   sd = 0.05,
-  avg_N_max = 70,
+  prop_modern = 0.5,
   min_N_max = 10
 )
 }
@@ -19,14 +19,15 @@ create_roosts(
 
 \item{sd}{Standard deviation of roost locations around cluster centers.}
 
-\item{avg_N_max}{Mean roost carrying capacity.}
+\item{prop_modern}{Proportion of roosts that are modern, between 0 and 1.}
 
 \item{min_N_max}{Minimum roost carrying capacity.}
 }
 \value{
-A data frame containing roost locations, carrying capacities,
-and population compartments.
+A data frame containing roost locations, types, carrying
+capacities, and population compartments.
 }
 \description{
-Creates spatially clustered roosts with variable carrying capacities.
+Creates spatially clustered roosts with a prescribed proportion of
+modern and traditional roosts, each with different carrying capacities.
 }
