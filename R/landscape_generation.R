@@ -264,3 +264,18 @@ generate_landscapes <- function(
     R_breaks = R_breaks
   )
 }
+
+# helper function
+
+calculate_clark_evans_R <- function(x, y) {
+  coords <- cbind(x, y)
+  n <- nrow(coords)
+
+  distances <- as.matrix(dist(coords))
+  diag(distances) <- Inf
+
+  mean_nn <- mean(apply(distances, 1, min))
+  expected_nn <- 0.5 / sqrt(n)
+
+  mean_nn / expected_nn
+}
