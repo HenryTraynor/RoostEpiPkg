@@ -2,6 +2,7 @@
 
 export(SIRS_step)
 export(SIR_step)
+export(calculate_clark_evans_R)
 export(calculate_diffusion_coefficients)
 export(create_epidemic_params)
 export(create_movement_params)
