@@ -265,7 +265,17 @@ generate_landscapes <- function(
   )
 }
 
-# helper function
+
+#' Calculate the Clark-Evans Nearest-Neighbor Index
+#'
+#' @param x Numeric vector of x-coordinates for the spatial points.
+#' @param y Numeric vector of y-coordinates for the spatial points.
+#'   Must have the same length as \code{x}.
+#'
+#' @return A numeric scalar giving the Clark-Evans R index.
+#'
+#' @export
+
 
 calculate_clark_evans_R <- function(x, y) {
   coords <- cbind(x, y)
